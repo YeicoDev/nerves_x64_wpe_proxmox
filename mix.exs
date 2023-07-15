@@ -1,8 +1,8 @@
-defmodule NervesSystemX8664.MixProject do
+defmodule YeicoCoreX64WPE.MixProject do
   use Mix.Project
 
-  @github_organization "nerves-project"
-  @app :nerves_system_x86_64
+  @github_organization "YeicoDev"
+  @app :yeico_core_x64_wpe
   @source_url "https://github.com/#{@github_organization}/#{@app}"
   @version Path.join(__DIR__, "VERSION")
            |> File.read!()

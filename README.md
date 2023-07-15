@@ -1,90 +1,69 @@
-# Generic x86_64 System
+# Nerves x64 System with WPE
 
-[![CircleCI](https://circleci.com/gh/nerves-project/nerves_system_x86_64/tree/master.svg?style=svg)](https://circleci.com/gh/nerves-project/nerves_system_x86_64/tree/master)
-[![Hex version](https://img.shields.io/hexpm/v/nerves_system_x86_64.svg "Hex version")](https://hex.pm/packages/nerves_system_x86_64)
+```bash
+uname -a
+Linux builder 6.2.16-3-pve #1 SMP PREEMPT_DYNAMIC PVE 6.2.16-3 (2023-06-17T05:58Z) x86_64 x86_64 x86_64 GNU/Linux
 
-This is the base Nerves System configuration for a generic x86_64 system.
+lsb_release -a
+No LSB modules are available.
+Distributor ID: Ubuntu
+Description:    Ubuntu 23.04
+Release:        23.04
+Codename:       lunar
 
-| Feature              | Description                     |
-| -------------------- | ------------------------------- |
-| CPU                  | Intel                           |
-| Memory               | 512 MB+ DRAM                    |
-| Storage              | Hard disk/SSD/etc. (/dev/sda)   |
-| Linux kernel         | 5.4                             |
-| IEx terminal         | Display - tty0                  |
-| Hardware I/O         | None                            |
-| Ethernet             | Yes                             |
+cat ~/.tool-versions 
+erlang 25.3
+elixir 1.14.5-otp-25
 
-Please contact us about this if you're really interested in it. We don't
-exercise it regularly except as a base for other x86_64 projects.
+mix local.hex --force
+mix local.rebar --force
+mix archive.install hex nerves_bootstrap --force
 
-## Using
+rm -fr deps/ _build/ .nerves/
+mix deps.get
+mix nerves.system.shell
+...
+exit
+mix nerves.artifact
 
-The most common way of using this Nerves System is create a project with `mix
-nerves.new` and to export `MIX_TARGET=x86_64`. See the [Getting started
-guide](https://hexdocs.pm/nerves/getting-started.html#creating-a-new-nerves-app)
-for more information.
+cd hello_fw
+export MIX_TARGET=x64
+mix deps.get
+mix firmware
+fwup -a -d hello_fw.img -i _build/x64_dev/nerves/images/hello_fw.fw -t complete
 
-If you need custom modifications to this system for your device, clone this
-repository and update as described in [Making custom
-systems](https://hexdocs.pm/nerves/systems.html#customizing-your-own-nerves-system)
-
-## Root disk naming
-
-If you have multiple SSDs, or other devices connected, it's
-possible that Linux will enumerate those devices in a nondeterministic order.
-This can be mitigated by using `udev` to populate the `/dev/disks/by-*`
-directories, but even this can be inconvenient when you just want to refer to
-the drive that provides the root filesystem. To address this, `erlinit` creates
-`/dev/rootdisk0`, `/dev/rootdisk0p1`, etc. and symlinks them to the expected
-devices. For example, if your root file system is on `/dev/mmcblk0p1`, you'll
-get a symlink from `/dev/rootdisk0p1` to `/dev/mmcblk0p1` and the whole disk
-will be `/dev/rootdisk0`. Similarly, if the root filesystem is on `/dev/sdb1`,
-you'd still get `/dev/rootdisk0p1` and `/dev/rootdisk0` and they'd by symlinked
-to `/dev/sdb1` and `/dev/sdb` respectively.
-
-## Provisioning devices
-
-This system supports storing provisioning information in a small key-value store
-outside of any filesystem. Provisioning is an optional step and reasonable
-defaults are provided if this is missing.
-
-Provisioning information can be queried using the Nerves.Runtime KV store's
-[`Nerves.Runtime.KV.get/1`](https://hexdocs.pm/nerves_runtime/Nerves.Runtime.KV.html#get/1)
-function.
-
-Keys used by this system are:
-
-Key                    | Example Value     | Description
-:--------------------- | :---------------- | :----------
-`nerves_serial_number` | `"12345678"`      | By default, this string is used to create unique hostnames and Erlang node names. If unset, it defaults to part of the Ethernet adapter's MAC address.
-
-The normal procedure would be to set these keys once in manufacturing or before
-deployment and then leave them alone.
-
-For example, to provision a serial number on a running device, run the following
-and reboot:
-
-```elixir
-iex> cmd("fw_setenv nerves_serial_number 12345678")
+ssh root@10.77.0.48 << EOF
+qm stop 101
+rsync -Lavr samuel@builder:yeico_core_x64_wpe/hello_fw/hello_fw.img .
+qm unlink 101 virtio0
+lvremove -f pve/vm-101-disk-0
+qm importdisk 101 hello_fw.img local-lvm
+qm set 101 --virtio0 local-lvm:vm-101-disk-0
+qm start 101
+exit
+EOF
 ```
 
-This system supports setting the serial number offline. To do this, set the
-`NERVES_SERIAL_NUMBER` environment variable when burning the firmware. If you're
-programming MicroSD cards using `fwup`, the commandline is:
+- make menuconfig
+  - make savedefconfig -> nerves_defconfig
+- make linux-menuconfig
+  - make linux-update-defconfig -> linux-5.4.defconfig
+- make busybox-menuconfig
+  - manual copy 
 
-```sh
-sudo NERVES_SERIAL_NUMBER=12345678 fwup path_to_firmware.fw
-```
+## Notes and References
 
-Serial numbers are stored on the MicroSD card so if the MicroSD card is
-replaced, the serial number will need to be reprogrammed. The numbers are stored
-in a U-boot environment block. This is a special region that is separate from
-the application partition so reformatting the application partition will not
-lose the serial number or any other data stored in this block.
-
-Additional key value pairs can be provisioned by overriding the default provisioning.conf
-file location by setting the environment variable
-`NERVES_PROVISIONING=/path/to/provisioning.conf`. The default provisioning.conf
-will set the `nerves_serial_number`, if you override the location to this file,
-you will be responsible for setting this yourself.
+- use libwxgtk-webview3.2-dev for erlang asdf 25.3
+- buildroot-2022.11.3 includes 
+  - erlang 25.3
+  - wpewebkit 2.38.5
+  - wpebackend-fdo 1.12.1
+  - libwpe 1.12.3
+  - cog 0.14.1
+  - weston 10.0.1
+- see ./deps/nerves_system_br/buildroot-2022.11.3
+- https://hexdocs.pm/nerves/customizing-systems.html
+- https://github.com/nerves-project/nerves_system_x86_64/releases/tag/v1.22.2
+- https://github.com/buildroot/buildroot/releases/tag/2022.11.3
+- https://github.com/nerves-web-kiosk/kiosk_system_x86_64
+- https://nightly.buildroot.org/manual.html
